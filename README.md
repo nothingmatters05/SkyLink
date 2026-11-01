@@ -20,10 +20,10 @@ The ESP32 forwards each UART byte to both the Serial Monitor and TCP clients wit
 
 1. Connect the STM32 TX output to ESP32 GPIO 16 (UART2 RX). Connect the grounds together. The sketch configures UART at 9600 baud, 8-N-1. GPIO 17 is configured as UART2 TX but is not used by this one-way bridge.
 2. Ensure the STM32 UART signal is 3.3 V-compatible. Use a level shifter if its TX output is 5 V; do not connect 5 V directly to an ESP32 GPIO.
-3. Upload `firmware/esp32_uart_tcp_bridge/esp32_uart_tcp_bridge.ino` from Arduino IDE with the **ESP32 Dev Module** board selected. The sketch creates the `scott` hotspot using the password configured at the top of the sketch.
+3. Upload `firmware/esp32_uart_tcp_bridge/esp32_uart_tcp_bridge.ino` from Arduino IDE with the **ESP32 Dev Module** board selected. The sketch creates the `SkyLink` hotspot using the password configured at the top of the sketch.
 4. Open Arduino Serial Monitor at **9600 baud**. It prints the hotspot name and IP address (normally `192.168.4.1`).
-5. On your computer, connect to the ESP32 Wi-Fi hotspot `scott` with password `87654321`. The ESP32 does not need to join a router or the internet for this setup.
-6. To check UART reception in a browser, visit `http://192.168.4.1/`. The page displays the latest complete line. TCP telemetry for the visualizer is available on port **8080** at the same IP.
+5. On your computer, connect to the ESP32 Wi-Fi hotspot `SkyLink` with password `87654321`. The ESP32 does not need to join a router or the internet for this setup.
+6. To monitor the link in a browser, visit `http://192.168.4.1/`. The SkyLink dashboard shows parsed attitude and altitude, the latest UART frame, telemetry freshness, Wi-Fi station count, and TCP client count. TCP telemetry for the visualizer is available on port **8080** at the same IP.
 
 ## Run the Python visualizer
 
@@ -48,7 +48,7 @@ The terminal prints each valid sample as the raw, unfiltered STM32 frame and its
 
 ## Troubleshooting
 
-- **Hotspot `scott` is not visible:** Confirm the sketch uploaded and is running. Check the Serial Monitor at 9600 baud for `Wi-Fi name: scott` and the hotspot IP. Press the ESP32 EN/Reset button after opening the monitor.
+- **Hotspot `SkyLink` is not visible:** Confirm the sketch uploaded and is running. Check the Serial Monitor at 9600 baud for `Wi-Fi name: SkyLink` and the hotspot IP. Press the ESP32 EN/Reset button after opening the monitor.
 - **Connection refused / timeout:** Connect the computer to the ESP32 hotspot, check the IP in the Serial Monitor and `ESP_IP`, and allow TCP port 8080 through any local firewall.
 - **No telemetry updates:** Check STM32 TX-to-GPIO-16 wiring, common ground, UART baud and 8-N-1 settings, and that each STM32 line ends in `\r\n` or `\n`.
 - **Missing VPython:** Run `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`.
