@@ -14,7 +14,7 @@ R:12.35,P:-4.12,Y:0.04,Alt:0.02
 ```
 
 `R` and `P` are absolute angles in degrees, `Y` is yaw rate in degrees per second, and `Alt` is altitude.
-The ESP32 forwards each UART byte to both the Serial Monitor and TCP clients without filtering. The visualizer prints the original received frame alongside its parsed values; it does not smooth the sensor data. It integrates yaw rate for the displayed heading and clamps altitude only for the 3D model, to the 0-2 m flight envelope.
+The ESP32 forwards each UART byte to both the Serial Monitor and TCP clients without filtering. The visualizer prints the original received frame alongside its parsed values and does not smooth the sensor data. It integrates yaw rate for the displayed heading.
 
 ## Hardware and network setup
 
@@ -42,13 +42,17 @@ To run the visualizer, use the venv's Python directly. Activation is not require
 
 If you prefer the shorter `python` command, activate the environment first. If PowerShell prevents activation, allow it for the current terminal with `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`, then run `.\.venv\Scripts\Activate.ps1`.
 
-The visualizer defaults to the ESP32 hotspot IP `192.168.4.1`. If your Serial Monitor prints a different IP, edit `ESP_IP` near the top of `visualizer/drone_visualizer.py`. Make sure the computer is connected to the ESP32 hotspot before launching.
+The visualizer defaults to the ESP32 hotspot IP `192.168.4.1` and TCP port `8080`, matching the ESP32 sketch. Make sure the computer is connected to the SkyLink hotspot before launching. If the IP or port changes, set `SKYLINK_ESP_IP` and `SKYLINK_ESP_PORT` in PowerShell before starting the visualizer.
 
-The terminal prints each valid sample as the raw, unfiltered STM32 frame and its parsed values. The 3D view updates at 60 frames per second in a closed, translucent 4 m x 4 m x 2 m flight box. Roll and pitch are used as received, yaw rate is integrated into the displayed heading, and altitude is clamped to 0-2 m for the model. The drone has animated counter-rotating propellers. Press **Ctrl+C** in the terminal to stop.
+The terminal prints each valid sample as the raw, unfiltered STM32 frame and its parsed values. The full-screen 3D view keeps the drone centered, shows an open ground grid with a 1.5 m reference below it, and has no enclosing box or altitude labels. Roll and pitch control the model, yaw rate drives the heading, and the altitude readout shows the incoming value. Drag to orbit, scroll to zoom, and right-drag to pan. Press **Ctrl+C** in the terminal to stop.
+
+### Hosting
+
+VPython serves the interactive dashboard locally on the computer running the visualizer and opens it in your browser. The current VPython page connects to a local WebSocket, so the interactive 3D view is not ready to share with other devices or host publicly. That would require a separate web-client/server implementation.
 
 ## Troubleshooting
 
 - **Hotspot `SkyLink` is not visible:** Confirm the sketch uploaded and is running. Check the Serial Monitor at 9600 baud for `Wi-Fi name: SkyLink` and the hotspot IP. Press the ESP32 EN/Reset button after opening the monitor.
-- **Connection refused / timeout:** Connect the computer to the ESP32 hotspot, check the IP in the Serial Monitor and `ESP_IP`, and allow TCP port 8080 through any local firewall.
+- **Connection refused / timeout:** Connect the computer to the ESP32 hotspot, check the IP in the Serial Monitor and `SKYLINK_ESP_IP`, and allow TCP port 8080 through any local firewall.
 - **No telemetry updates:** Check STM32 TX-to-GPIO-16 wiring, common ground, UART baud and 8-N-1 settings, and that each STM32 line ends in `\r\n` or `\n`.
 - **Missing VPython:** Run `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`.
