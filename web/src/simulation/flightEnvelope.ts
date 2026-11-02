@@ -1,0 +1,6 @@
+export const ALTITUDE_LIMIT_METERS = 1.5;
+export const ALTITUDE_MARK_INTERVAL_METERS = 0.5;
+export const ALTITUDE_MARKS_METERS = Array.from(
+  { length: Math.round((ALTITUDE_LIMIT_METERS * 2) / ALTITUDE_MARK_INTERVAL_METERS) + 1 },
+  (_, index) => ALTITUDE_LIMIT_METERS - index * ALTITUDE_MARK_INTERVAL_METERS,
+);

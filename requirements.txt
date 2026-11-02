@@ -1,2 +1,0 @@
-vpython>=7.6
-setuptools<81

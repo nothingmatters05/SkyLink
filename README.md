@@ -1,58 +1,66 @@
-# Drone Telemetry Visualizer
+# SkyLink
 
-A two-part telemetry project. The ESP32 creates its own Wi-Fi hotspot, serves a browser-based sensor monitor, and broadcasts UART telemetry to the Python visualizer over TCP.
+SkyLink is a browser-based drone telemetry dashboard and 3D simulator. The React app runs in a browser and supports demo telemetry without hardware or live telemetry from an STM32 through an ESP32 WebSocket bridge.
 
-- `firmware/esp32_uart_tcp_bridge/esp32_uart_tcp_bridge.ino` receives telemetry from an STM32 over UART, hosts a browser monitor, and broadcasts telemetry to TCP clients.
-- `visualizer/drone_visualizer.py` reads the TCP stream in a background thread and renders the drone attitude and altitude with VPython.
+## Run the web app
+
+Install [Node.js](https://nodejs.org/) (20 or newer) once. Open PowerShell in the repository folder and install the web dependencies once:
+
+```powershell
+cd .\web
+npm.cmd install
+```
+
+Each time you want to run the app, from the repository folder:
+
+```powershell
+cd .\web
+npm.cmd run dev
+```
+
+Open the local URL Vite prints in the terminal (usually `http://localhost:5173`). The app starts in **Demo telemetry** mode, so you can use the simulator without connecting hardware. Keep the terminal open while using the app; press **Ctrl+C** there to stop the development server.
+
+To use live telemetry, set up and power the hardware below, connect your computer to the ESP32 Wi-Fi network, then choose **Live · ESP32 WebSocket** in the app. The default endpoint is `ws://192.168.4.1:81`; change it in the telemetry-link panel if the ESP32 reports a different IP address.
+
+To create a production build, run this from `web/`:
+
+```powershell
+npm.cmd run build
+```
+
+The generated static files are written to `web/dist/`.
+
+## Hardware setup
+
+The data path is STM32 UART → ESP32 → WebSocket → browser:
+
+1. Connect the STM32 TX output to ESP32 GPIO 16 (UART2 RX), and connect the grounds. The ESP32 UART uses 9600 baud, 8-N-1. GPIO 17 is configured as UART2 TX but is not used by this one-way link.
+2. Ensure the STM32 UART signal is 3.3 V-compatible. Use a level shifter if its TX output is 5 V; do not connect 5 V directly to an ESP32 GPIO.
+3. Install **WebSockets by Markus Sattler (Links2004)** through Arduino IDE's Library Manager.
+4. Open `firmware/esp32_websocket_bridge/esp32_websocket_bridge.ino` in Arduino IDE, select the **ESP32 Dev Module** board, and upload the sketch.
+5. Open Arduino Serial Monitor at **9600 baud**. It prints the Wi-Fi name, IP address, and WebSocket endpoint. The ESP32 creates the `SkyLink` Wi-Fi network using the password configured near the top of the sketch (default: `87654321`).
+6. Connect the computer to the `SkyLink` network. The browser app connects to `ws://192.168.4.1:81` by default. The ESP32's optional status page is available at `http://192.168.4.1/`.
+
+Keep the STM32 still during gyro calibration and at the intended zero-altitude reference while its BMP280 pressure baseline is sampled at startup.
 
 ## Telemetry format
 
-Send one newline-terminated line for each sample:
+The STM32 sends one newline-terminated sample at a time:
 
 ```text
 R:12.35,P:-4.12,Y:0.04,Alt:0.02
 ```
 
-`R` and `P` are absolute angles in degrees, `Y` is yaw rate in degrees per second, and `Alt` is altitude.
-The ESP32 forwards each UART byte to both the Serial Monitor and TCP clients without filtering. The visualizer prints the original received frame alongside its parsed values and does not smooth the sensor data. It integrates yaw rate for the displayed heading.
+`R` and `P` are complementary-filtered angles in degrees, `Y` is gyro yaw rate in degrees per second, and `Alt` is relative altitude in metres. The ESP32 broadcasts each completed UART line as a WebSocket text message. Yaw is integrated in the browser and displayed as relative heading, not absolute compass heading. The firmware does not transmit raw accelerometer or gyroscope axes.
 
-## Hardware and network setup
-
-1. Connect the STM32 TX output to ESP32 GPIO 16 (UART2 RX). Connect the grounds together. The sketch configures UART at 9600 baud, 8-N-1. GPIO 17 is configured as UART2 TX but is not used by this one-way bridge.
-2. Ensure the STM32 UART signal is 3.3 V-compatible. Use a level shifter if its TX output is 5 V; do not connect 5 V directly to an ESP32 GPIO.
-3. Upload `firmware/esp32_uart_tcp_bridge/esp32_uart_tcp_bridge.ino` from Arduino IDE with the **ESP32 Dev Module** board selected. The sketch creates the `SkyLink` hotspot using the password configured at the top of the sketch.
-4. Open Arduino Serial Monitor at **9600 baud**. It prints the hotspot name and IP address (normally `192.168.4.1`).
-5. On your computer, connect to the ESP32 Wi-Fi hotspot `SkyLink` with password `87654321`. The ESP32 does not need to join a router or the internet for this setup.
-6. To monitor the link in a browser, visit `http://192.168.4.1/`. The SkyLink dashboard shows parsed attitude and altitude, the latest UART frame, telemetry freshness, Wi-Fi station count, and TCP client count. TCP telemetry for the visualizer is available on port **8080** at the same IP.
-
-## Run the Python visualizer
-
-Use Python 3.12 for the visualizer. From the project directory, create the environment and install the requirements once:
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-To run the visualizer, use the venv's Python directly. Activation is not required:
-
-```powershell
-.\.venv\Scripts\python.exe .\visualizer\drone_visualizer.py
-```
-
-If you prefer the shorter `python` command, activate the environment first. If PowerShell prevents activation, allow it for the current terminal with `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`, then run `.\.venv\Scripts\Activate.ps1`.
-
-The visualizer defaults to the ESP32 hotspot IP `192.168.4.1` and TCP port `8080`, matching the ESP32 sketch. Make sure the computer is connected to the SkyLink hotspot before launching. If the IP or port changes, set `SKYLINK_ESP_IP` and `SKYLINK_ESP_PORT` in PowerShell before starting the visualizer.
-
-The terminal prints each valid sample as the raw, unfiltered STM32 frame and its parsed values. The full-screen 3D view keeps the drone centered, shows an open ground grid with a 1.5 m reference below it, and has no enclosing box or altitude labels. Roll and pitch control the model, yaw rate drives the heading, and the altitude readout shows the incoming value. Drag to orbit, scroll to zoom, and right-drag to pan. Press **Ctrl+C** in the terminal to stop.
-
-### Hosting
-
-VPython serves the interactive dashboard locally on the computer running the visualizer and opens it in your browser. The current VPython page connects to a local WebSocket, so the interactive 3D view is not ready to share with other devices or host publicly. That would require a separate web-client/server implementation.
+The 3D simulator displays a relative vertical range from −1.5 m to +1.5 m. The web app reverses the sensor pitch sign for the model's coordinate convention; the STM32 pitch calculation and transmitted sensor values are unchanged.
 
 ## Troubleshooting
 
-- **Hotspot `SkyLink` is not visible:** Confirm the sketch uploaded and is running. Check the Serial Monitor at 9600 baud for `Wi-Fi name: SkyLink` and the hotspot IP. Press the ESP32 EN/Reset button after opening the monitor.
-- **Connection refused / timeout:** Connect the computer to the ESP32 hotspot, check the IP in the Serial Monitor and `SKYLINK_ESP_IP`, and allow TCP port 8080 through any local firewall.
-- **No telemetry updates:** Check STM32 TX-to-GPIO-16 wiring, common ground, UART baud and 8-N-1 settings, and that each STM32 line ends in `\r\n` or `\n`.
-- **Missing VPython:** Run `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`.
+- **The app does not open:** Run `npm.cmd run dev` from `web/` and open the URL printed by Vite.
+- **The ESP32 Wi-Fi network is missing:** Check that the sketch uploaded and is running. Look for the Wi-Fi name and IP in Arduino Serial Monitor at 9600 baud, then reset the ESP32.
+- **Live mode does not connect:** Connect the computer to the ESP32 Wi-Fi network, verify the IP shown in Serial Monitor, install the WebSockets Arduino library, and confirm the browser's WebSocket URL uses port 81.
+- **No telemetry appears:** Check STM32 TX-to-GPIO-16 wiring, common ground, UART baud and 8-N-1 settings, and that each STM32 line ends in `\r\n` or `\n`.
+- **The production build fails:** Run `npm.cmd install` from `web/`, then retry `npm.cmd run build`.
+
+No Python installation or virtual environment is needed.

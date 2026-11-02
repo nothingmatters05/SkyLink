@@ -1,6 +1,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
-#include <vector>
+#include <WebSocketsServer.h>
 
 // Connect the STM32's 3.3 V TX signal to ESP32 GPIO 16; GPIO 17 is the return TX pin.
 constexpr uint8_t STM32_RX_PIN = 16;
@@ -10,12 +10,12 @@ constexpr size_t MAX_TELEMETRY_LINE_LENGTH = 200;
 
 const char* WIFI_SSID = "SkyLink";
 const char* WIFI_PASSWORD = "87654321";
-const uint16_t TCP_PORT = 8080;
+const uint16_t WEBSOCKET_PORT = 81;
 
 WebServer webServer(80);
-WiFiServer tcpServer(TCP_PORT);
-std::vector<WiFiClient> tcpClients;
+WebSocketsServer webSocket(WEBSOCKET_PORT);
 
+// Buffer one newline-terminated STM32 frame before broadcasting it to WebSocket clients.
 String currentLine;
 String latestData = "Waiting for STM32 data...";
 bool currentLineOverflowed = false;
@@ -149,7 +149,7 @@ const char webpage[] PROGMEM = R"rawliteral(
     <section class="details" aria-label="Link status">
       <div class="detail"><div class="detail-label">Access point</div><div class="detail-value" id="network">Connecting…</div></div>
       <div class="detail"><div class="detail-label">Telemetry age</div><div class="detail-value" id="age">--</div></div>
-      <div class="detail"><div class="detail-label">TCP clients</div><div class="detail-value" id="clients">--</div></div>
+      <div class="detail"><div class="detail-label">WebSocket port</div><div class="detail-value">81</div></div>
     </section>
     <div class="frame"><div class="frame-label">Latest received frame</div><code id="raw">Waiting for STM32 telemetry…</code></div>
     <footer><span>SkyLink · ESP32 UART bridge</span><span>Refreshes automatically</span></footer>
@@ -184,8 +184,6 @@ const char webpage[] PROGMEM = R"rawliteral(
           live ? 'STREAM LIVE' : hasData ? 'SIGNAL STALE' : 'WAITING FOR DATA';
         document.getElementById('network').textContent =
           status.ssid + ' · ' + status.ip + ' · ' + status.wifi_clients + ' connected';
-        document.getElementById('clients').textContent =
-          status.tcp_clients + ' connected';
         document.getElementById('age').textContent =
           hasData ? (age < 1000 ? age + ' ms ago' : (age / 1000).toFixed(1) + ' s ago') : 'No samples received';
         document.getElementById('raw').textContent = hasData ? status.data : 'Waiting for STM32 telemetry…';
@@ -226,45 +224,11 @@ String jsonEscape(const String& value) {
   return escaped;
 }
 
-void acceptTcpClients() {
-  WiFiClient client = tcpServer.accept();
-  if (client) {
-    client.setNoDelay(true);
-    tcpClients.push_back(client);
-    Serial.println("Python TCP client connected");
-  }
-}
-
-void removeDisconnectedTcpClients() {
-  for (auto it = tcpClients.begin(); it != tcpClients.end();) {
-    if (!it->connected()) {
-      it->stop();
-      it = tcpClients.erase(it);
-    } else {
-      ++it;
-    }
-  }
-}
-
-void forwardSerialByte(uint8_t value) {
-  for (auto it = tcpClients.begin(); it != tcpClients.end();) {
-    if (!it->connected()) {
-      it->stop();
-      it = tcpClients.erase(it);
-      continue;
-    }
-
-    it->write(value);
-    ++it;
-  }
-}
-
 void receiveStm32Telemetry() {
-  // Forward every byte unchanged; discard oversized lines from the dashboard snapshot.
+  // Forward bytes unchanged to Serial; discard oversized frames until their newline.
   while (Serial2.available() > 0) {
     const uint8_t value = static_cast<uint8_t>(Serial2.read());
     Serial.write(value);
-    forwardSerialByte(value);
 
     const char c = static_cast<char>(value);
     if (c == '\n') {
@@ -274,6 +238,7 @@ void receiveStm32Telemetry() {
           latestData = currentLine;
           hasTelemetry = true;
           lastTelemetryAt = millis();
+          webSocket.broadcastTXT(currentLine);
         }
       }
       currentLine = "";
@@ -294,7 +259,7 @@ void setup() {
   delay(1000);
 
   Serial.println();
-  Serial.println("ESP32 UART + Wi-Fi monitor starting...");
+  Serial.println("ESP32 UART + WebSocket bridge starting...");
 
   WiFi.mode(WIFI_AP);
   if (!WiFi.softAP(WIFI_SSID, WIFI_PASSWORD)) {
@@ -304,24 +269,23 @@ void setup() {
     }
   }
 
-  tcpServer.begin();
+  webSocket.begin();
 
   Serial.print("Wi-Fi name: ");
   Serial.println(WIFI_SSID);
   Serial.print("Open monitor at: http://");
   Serial.println(WiFi.softAPIP());
-  Serial.print("TCP telemetry port: ");
-  Serial.println(TCP_PORT);
+  Serial.print("WebSocket telemetry endpoint: ws://");
+  Serial.print(WiFi.softAPIP());
+  Serial.print(":");
+  Serial.println(WEBSOCKET_PORT);
 
   webServer.on("/", HTTP_GET, []() {
     webServer.send_P(200, "text/html; charset=utf-8", webpage);
   });
-  webServer.on("/data", HTTP_GET, []() {
-    webServer.send(200, "text/plain", latestData);
-  });
   webServer.on("/status", HTTP_GET, []() {
     String response;
-    response.reserve(latestData.length() + 180);
+    response.reserve(latestData.length() + 140);
     response = "{\"telemetry\":";
     response += hasTelemetry ? "true" : "false";
     response += ",\"data\":\"";
@@ -332,16 +296,12 @@ void setup() {
     } else {
       response += "null";
     }
-    response += ",\"tcp_clients\":";
-    response += String(tcpClients.size());
     response += ",\"wifi_clients\":";
     response += String(WiFi.softAPgetStationNum());
     response += ",\"ssid\":\"";
     response += jsonEscape(WIFI_SSID);
     response += "\",\"ip\":\"";
     response += WiFi.softAPIP().toString();
-    response += "\",\"tcp_port\":";
-    response += String(TCP_PORT);
     response += "}";
     webServer.send(200, "application/json", response);
   });
@@ -350,8 +310,7 @@ void setup() {
 }
 
 void loop() {
-  acceptTcpClients();
   receiveStm32Telemetry();
-  removeDisconnectedTcpClients();
+  webSocket.loop();
   webServer.handleClient();
 }
