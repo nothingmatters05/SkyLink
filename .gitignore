@@ -1,2 +1,10 @@
 web/node_modules/
 web/dist/
+firmware/esp32_websocket_bridge/data/
+firmware/esp32_websocket_bridge/spiffs.bin
+.pio/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example

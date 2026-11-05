@@ -32,6 +32,12 @@ const initialDemo: DemoControls = {
   autoMotion: true,
 };
 
+const isDevelopmentBuild = import.meta.env.DEV;
+const defaultSocketUrl = (import.meta.env.DEV && import.meta.env.VITE_TELEMETRY_WS_URL)
+  || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? "ws://192.168.4.1:81"
+    : `ws://${window.location.hostname}:81`);
+
 function statusLabel(status: LinkStatus) {
   const labels: Record<LinkStatus, string> = {
     disconnected: "Disconnected",
@@ -52,7 +58,7 @@ function wrapHeading(value: number) {
 }
 
 function App() {
-  const [mode, setMode] = useState<OperatingMode>("DEMO");
+  const [mode, setMode] = useState<OperatingMode>(isDevelopmentBuild ? "DEMO" : "LIVE");
   const [demo, setDemo] = useState(initialDemo);
   const [running, setRunning] = useState(true);
   const [graphsVisible, setGraphsVisible] = useState(true);
@@ -63,8 +69,8 @@ function App() {
   const [liveAltitudeOffset, setLiveAltitudeOffset] = useState(0);
   const [liveRollOffset, setLiveRollOffset] = useState(0);
   const [livePitchOffset, setLivePitchOffset] = useState(0);
-  const [socketUrl, setSocketUrl] = useState("ws://192.168.4.1:81");
-  const [liveEnabled, setLiveEnabled] = useState(false);
+  const [socketUrl, setSocketUrl] = useState(defaultSocketUrl);
+  const [liveEnabled, setLiveEnabled] = useState(!isDevelopmentBuild);
   const [demoSample, setDemoSample] = useState<TelemetrySample>({
     roll: 0, pitch: 0, yawRate: 0, altitude: 0.3, receivedAt: Date.now(),
   });
@@ -74,7 +80,13 @@ function App() {
   const lastDemoUpdateAt = useRef<number | null>(null);
   const lastLiveSampleAt = useRef<number | null>(null);
   const previousPacketAt = useRef<number | null>(null);
-  const { sample: liveSample, status, error, disconnect } = useTelemetrySocket(liveEnabled, socketUrl);
+  const {
+    sample: liveSample,
+    status,
+    error,
+    lastPacketValid,
+    disconnect,
+  } = useTelemetrySocket(liveEnabled, socketUrl);
 
   const sourceTelemetry = mode === "DEMO" ? demoSample : liveSample;
   const referencedTelemetry = sourceTelemetry
@@ -87,7 +99,8 @@ function App() {
     : null;
   const telemetry = referencedTelemetry ? mapTelemetry(referencedTelemetry, axisMapping) : null;
   const sampleAge = telemetry ? Date.now() - telemetry.receivedAt : Infinity;
-  const isFresh = mode === "DEMO" || sampleAge <= 2000;
+  const isFresh = mode === "DEMO"
+    || (status === "connected" && lastPacketValid === true && sampleAge <= 2000);
   const linkDisplay = status === "connected" && !telemetry
     ? "Waiting for telemetry"
     : telemetry && !isFresh
@@ -143,7 +156,7 @@ function App() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       const current = telemetryRef.current;
-      if (!current) return;
+      if (!current || (mode === "LIVE" && !isFresh)) return;
       const now = new Date();
       setHistory((points) => [
         ...points.slice(-119),
@@ -157,7 +170,7 @@ function App() {
       ]);
     }, 250);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [isFresh, mode]);
 
   useEffect(() => {
     if (mode === "DEMO") {
@@ -406,7 +419,7 @@ function App() {
               </div>
               <div className="packet-detail">
                 <span>RX RATE <strong>{receiveRate === null ? "—" : `${receiveRate.toFixed(1)} Hz`}</strong></span>
-                <span>LAST PACKET <strong>{telemetry && isFresh ? "VALID · R/P/Y/ALT" : "WAITING"}</strong></span>
+                <span>LAST PACKET <strong>{lastPacketValid === false ? "INVALID FRAME" : lastPacketValid === true ? (isFresh ? "VALID · R/P/Y/ALT" : "VALID · STALE") : "WAITING"}</strong></span>
               </div>
             </section>
 

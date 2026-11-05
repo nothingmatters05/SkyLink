@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "SkyLink: Build ESP32 Firmware",
+      "type": "process",
+      "command": "${env:USERPROFILE}\\.platformio\\penv\\Scripts\\pio.exe",
+      "args": ["run", "-e", "skylink-esp32"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "SkyLink: Build Frontend and Verified SPIFFS Image",
+      "type": "process",
+      "command": "python",
+      "args": ["scripts/prepare_spiffs.py"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "SkyLink: Serial Monitor (COM13, 9600)",
+      "type": "process",
+      "command": "${env:USERPROFILE}\\.platformio\\penv\\Scripts\\pio.exe",
+      "args": ["device", "monitor", "--port", "COM13", "--baud", "9600"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

@@ -11,6 +11,7 @@ export function useTelemetrySocket(enabled: boolean, url: string) {
   const [status, setStatus] = useState<LinkStatus>("disconnected");
   const [error, setError] = useState("");
   const [lastPacketAt, setLastPacketAt] = useState<number | null>(null);
+  const [lastPacketValid, setLastPacketValid] = useState<boolean | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const connectionTimerRef = useRef<number | null>(null);
@@ -44,6 +45,7 @@ export function useTelemetrySocket(enabled: boolean, url: string) {
       if (disposed || !retryRef.current) return;
       setStatus("connecting");
       setError("");
+      setLastPacketValid(null);
 
       let socket: WebSocket;
       try {
@@ -77,6 +79,7 @@ export function useTelemetrySocket(enabled: boolean, url: string) {
       socket.addEventListener("message", (event: MessageEvent<string>) => {
         if (disposed || !retryRef.current || socketRef.current !== socket) return;
         if (typeof event.data !== "string") {
+          setLastPacketValid(false);
           setError("Received a non-text telemetry frame");
           return;
         }
@@ -85,9 +88,11 @@ export function useTelemetrySocket(enabled: boolean, url: string) {
           const receivedAt = Date.now();
           setSample({ ...parsed, receivedAt });
           setLastPacketAt(receivedAt);
+          setLastPacketValid(true);
           setStatus("connected");
           setError("");
         } catch (reason) {
+          setLastPacketValid(false);
           setError(reason instanceof Error ? reason.message : "Invalid telemetry packet");
         }
       });
@@ -130,5 +135,5 @@ export function useTelemetrySocket(enabled: boolean, url: string) {
     return () => window.clearInterval(timer);
   }, [enabled, lastPacketAt]);
 
-  return { sample, status, error, disconnect };
+  return { sample, status, error, lastPacketValid, disconnect };
 }

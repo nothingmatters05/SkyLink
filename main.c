@@ -57,7 +57,8 @@ uint16_t dig_T1, dig_P1;
 int16_t  dig_T2, dig_T3, dig_P2, dig_P3, dig_P4, dig_P5, dig_P6, dig_P7, dig_P8, dig_P9;
 float    t_fine;
 
-/* UI Pin Definitions */
+/* I2C1 uses PB6/PB7; USART1 transmits on PA9. */
+/* UI pins: PB12-PB14 are RGB LEDs and PB15 drives the buzzer. */
 #define LED_R_PIN (1U << 12)
 #define LED_G_PIN (1U << 13)
 #define LED_B_PIN (1U << 14)
@@ -455,6 +456,7 @@ int main(void) {
                 }
             }
 
+            /* R/P are degrees, Y is degrees/second, and Alt is relative metres. */
             str("R:"); uart_float(current_roll);
             str(",P:"); uart_float(current_pitch);
             str(",Y:"); uart_float(yaw_rate);
